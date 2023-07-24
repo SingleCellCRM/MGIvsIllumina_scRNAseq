@@ -1,0 +1,72 @@
+---
+title: "Trimmed vs Untrimmed reads"
+author: "Nadine Bestard"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(here)
+library(dplyr)
+library(ggplot2)
+```
+
+This comparisons uses Thalamus David M. data, (TH), both before downsampling; one dataset trimmed to 90 bp the other with the raw 150bp. 
+
+## Cell Ranger
+
+- plot umis, mapped, cells, avg reads/cells 
+```{r}
+# all interesting info was already in the other file
+#cellranger_general <- read.delim(here("outs/cellranger/downsampled/multiqc_data/multiqc_general_stats.txt"))
+#colnames(cellranger_general) <- stringr::str_replace(colnames(cellranger_general),"Cell.Ranger.Count_mqc.generalstats.cell_ranger_count.Count_", "")
+
+cellranger_cropped <- read.delim(here("outs/cellranger/illumina/David_cropped/multiqc_data/multiqc_cellranger_count.txt"))
+cellranger_long <- read.delim(here("outs/cellranger/illumina/David_longreads/multiqc_data/multiqc_cellranger_count.txt"))
+
+#cellranger <- merge(cellranger_general, cellranger, by= "Sample")
+
+# the notation of the "long" reads had been corrected
+# Reads from batch 1-4 were renamed as 5-8 as a swap between these two batches occured with the illuina seq
+# plus reads TH7 and TH8 are swapped (the swap happened at the library prep). This swap needs to be done with the "cropped"
+# library, to match the MGI samples. 
+cellranger_cropped[,2:21] <- cellranger_cropped[c(1:6,8,7), 2:21]
+cellranger_long[,2:21] <- cellranger_long[c(5:8,1:4), 2:21]
+#cellranger[c(18,19),2:21] <- cellranger[c(19,18),2:21]
+
+# add a label 
+cellranger_cropped$trim <- "Trimmed (90bp)"
+cellranger_long$trim <- "Original (150bp)"
+
+# combine
+cellranger <- rbind(cellranger_cropped, cellranger_long)
+cellranger$trim <- factor(as.factor(cellranger$trim), levels = c("Original (150bp)","Trimmed (90bp)"))
+#General
+cellranger_general <- cellranger %>% select(Sample, estimated.cells, reads.in.cells, avg.reads.cell, saturation, genes.detected, trim) 
+# sequencing
+cellranger_seq <- cellranger %>% select(Sample, 
+reads.mapped,
+confident.intergenic, confident.intronic, confident.exonic, reads.antisense, trim) 
+
+
+for(variable in colnames(cellranger_seq)){
+  plot(ggpubr::ggpaired(cellranger_seq, x = "trim", y = variable , fill = "trim", palette = "npg")  + ylab(variable))
+}
+
+for(variable in colnames(cellranger_general)){
+  plot(ggpubr::ggpaired(cellranger_general, x = "trim", y = variable , fill = "trim", palette = "npg")  + ylab(variable))
+}
+
+```
+
+
+```{r}
+#t-test
+ t.test(cellranger_cropped$reads.mapped, cellranger_long$reads.mapped, paried = TRUE )
+t.test(cellranger_cropped$genes.detected, cellranger_long$genes.detected, paried = TRUE )
+t.test(cellranger_long$estimated.cells, cellranger_cropped$estimated.cells, paried = TRUE )
+
+```

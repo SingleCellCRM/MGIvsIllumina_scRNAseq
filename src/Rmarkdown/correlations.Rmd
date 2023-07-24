@@ -1,0 +1,414 @@
+---
+title: "Correlations"
+author: "Nadine Bestard"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+---
+
+TO do:
+- global correlation genes
+
+- top 20% expression correlation, and bottom 20% correlation (maybe)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## set-up
+```{r}
+library(DropletUtils)
+library(here)
+library(scuttle)
+library(VennDiagram)
+library(ggplot2)
+library(dplyr)
+
+ save_path <- here("outs/correlations")
+ dir.create(save_path)
+ 
+ colour_blue_yellow <- ggsci::pal_jco("default")(2)
+```
+# Load datasets
+```{r}
+#thalamus
+sample_names_th_illumina <-dir(here("outs/cellranger/downsampled"), pattern = "^[T]") # extract TH and ZB
+sample_names_th_mgi <-dir(here("outs/cellranger/downsampled"), pattern = "^MGI_[T]") # extract TH and ZB
+# zb
+sample_names_zb_illumina <-dir(here("outs/cellranger/downsampled"), pattern = "^[Z]") # extract  ZB
+sample_names_zb_mgi <-dir(here("outs/cellranger/downsampled"), pattern = "^MGI_[Z]") # extract  ZB
+#sampels
+samples_th_illumina <- here(paste0("outs/cellranger/downsampled/", sample_names_th_illumina, "/outs/filtered_feature_bc_matrix/"))
+samples_th_mgi <- here(paste0("outs/cellranger/downsampled/", sample_names_th_mgi, "/outs/filtered_feature_bc_matrix/"))
+samples_zb_illumina <- here(paste0("outs/cellranger/downsampled/", sample_names_zb_illumina, "/outs/filtered_feature_bc_matrix/"))
+samples_zb_mgi <- here(paste0("outs/cellranger/downsampled/", sample_names_zb_mgi, "/outs/filtered_feature_bc_matrix/"))
+
+#into sce
+sce_th_mgi <- read10xCounts(samples_th_mgi, sample.names = sample_names_th_mgi, col.names = TRUE)
+sce_th_illumina <- read10xCounts(samples_th_illumina, sample.names = sample_names_th_illumina, col.names = TRUE)
+
+#zb
+sce_zb_mgi <- read10xCounts(samples_zb_mgi, sample.names = sample_names_zb_mgi, col.names = TRUE)
+sce_zb_illumina <- read10xCounts(samples_zb_illumina, sample.names = sample_names_zb_illumina, col.names = TRUE)
+
+```
+
+# Zebra Fish 
+## Add metrics
+```{r}
+# add quality info
+sce_zb_mgi <- addPerCellQCMetrics(sce_zb_mgi)
+sce_zb_mgi <- addPerFeatureQCMetrics(sce_zb_mgi)
+sce_zb_illumina <- addPerCellQCMetrics(sce_zb_illumina)
+sce_zb_illumina <- addPerFeatureQCMetrics(sce_zb_illumina)
+
+# Sort duplicates in barcodes
+sce_zb_illumina$Barcode_uniq <- colnames(sce_zb_illumina)
+sce_zb_mgi$Barcode_uniq <- colnames(sce_zb_mgi)
+
+
+```
+
+## Compare
+
+### num cells
+```{r}
+dim(sce_zb_illumina)[2]
+dim(sce_zb_mgi)[2]
+
+sum(colnames(sce_zb_illumina) %in% colnames(sce_zb_mgi))
+sum(colnames(sce_zb_mgi) %in% colnames(sce_zb_illumina)) # just checking no dups
+sum(sce_zb_illumina$Barcode_uniq %in% sce_zb_mgi$Barcode_uniq)
+```
+
+
+```{r}
+venn.diagram(list(colnames(sce_zb_mgi), colnames(sce_zb_illumina)), 
+             
+             #aes
+             col = colour_blue_yellow,
+             fill = c(alpha(colour_blue_yellow[1]), alpha(colour_blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "vennZBilluminavsMGI_cells.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Cells",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+
+```{r}
+# for some reason now I have 6 dups. I checked and they are in both, so must be dups. # colnames are unique
+compare_cells <-  merge(colData(sce_zb_illumina), colData(sce_zb_mgi), by = "Barcode_uniq", suffixes = c("_illumina","_mgi"))
+dim(compare_cells) 
+```
+
+## Correlation cells
+```{r}
+#plot(compare_cells$sum_illumina, compare_cells$sum_mgi)
+ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
+  geom_point()
+
+lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
+r2 <- summary(lm)$r.squared
+ggplot(as.data.frame(compare_cells), aes(x=detected_illumina, y = detected_mgi)) + 
+ # geom_smooth(method = "lm", colour="grey") +
+  geom_point(shape="o") +
+  ggtitle("Correlation Cells", 
+          subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
+  labs(x = "Illumina", y="MGI",
+       caption = "Number of detected genes for each cell") +
+ # geom_text(x = 3000, y = 10000, label = expression(r2))#(expression("R"^2)))#, round(r2,4))))
+geom_text(x = 3000, y = 10000, label = expression(paste("R"^2, "= 0.9995"))) + # I really tried to use the variable, but it does not work with the R2 expression
+theme_classic()
+
+```
+
+## number of genes
+```{r}
+# subset to only have genes expressed
+sce_zb_illumina <- sce_zb_illumina[rowSums(assay(sce_zb_illumina))>0,]
+sce_zb_mgi <- sce_zb_mgi[rowSums(assay(sce_zb_mgi))>0,]
+
+dim(sce_zb_illumina)[1]
+dim(sce_zb_mgi)[1]
+
+compare_genes <- merge(rowData(sce_zb_illumina), rowData(sce_zb_mgi), by="ID", suffixes = c("_illumina", "_mgi"))
+```
+
+
+```{r venngenes}
+venn.diagram(list(rownames(sce_zb_mgi), rownames(sce_zb_illumina)), 
+             
+             #aes
+             col = colour_blue_yellow,
+             fill = c(alpha(colour_blue_yellow[1]), alpha(colour_blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "vennZBilluminavsMGI_genes.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Genes",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+## correlation genes
+```{r}
+lm <- lm(compare_genes$mean_illumina ~ compare_genes$mean_mgi)
+r2 <- summary(lm)$r.squared
+r2
+ggplot(as.data.frame(compare_genes), aes(x=mean_illumina, y=mean_mgi )) +
+  geom_point(shape="o") +
+  ggtitle("Gene correlation", 
+          subtitle = paste("Num Genes =", dim(compare_genes)[1])) +
+  labs(x= "Illumina", y= "MGI",
+       caption = "Average expression of each gene across all cells") +
+  
+ # geom_smooth(method = "lm", colour = "black")
+  geom_text(x = 25, y = 75, label = expression(paste("R"^2, "= 0.9969"))) +#, round(r2,4)))) # I really tried to use the variable, not possible
+    theme_classic()
+  
+```
+
+# Mouse 
+## Add metrics
+```{r}
+# add quality info
+sce_th_mgi <- addPerCellQCMetrics(sce_th_mgi)
+sce_th_mgi <- addPerFeatureQCMetrics(sce_th_mgi)
+sce_th_illumina <- addPerCellQCMetrics(sce_th_illumina)
+sce_th_illumina <- addPerFeatureQCMetrics(sce_th_illumina)
+
+sce_th_illumina$Barcode_uniq <- colnames(sce_th_illumina)
+sce_th_mgi$Barcode_uniq <- colnames(sce_th_mgi)
+```
+
+## Compare
+
+### num cells
+```{r}
+dim(sce_th_illumina)[2]
+dim(sce_th_mgi)[2]
+
+sum(colnames(sce_th_illumina) %in% colnames(sce_th_mgi))
+
+#save the cells that are different from mgi and illumina
+only_illumina <- colnames(sce_th_illumina)[!(colnames(sce_th_illumina) %in% colnames(sce_th_mgi))]
+only_mgi <- colnames(sce_th_mgi)[!(colnames(sce_th_mgi) %in% colnames(sce_th_illumina))]
+
+saveRDS(only_mgi, here(save_path, "cells_only_in_mgi.RDS"))
+saveRDS(only_illumina, here(save_path, "cells_only_in_illumina.RDS"))
+```
+
+I saved the cells that are different between the two technologies to track them downstream
+
+
+```{r}
+venn.diagram(list(colnames(sce_zb_mgi), colnames(sce_zb_illumina)), 
+             
+             #aes
+             col = colour_blue_yellow,
+             fill = c(alpha(colour_blue_yellow[1]), alpha(colour_blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "vennZBilluminavsMGI_cells.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Cells",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+## Compare
+
+
+```{r}
+
+compare_cells <-  merge(colData(sce_th_illumina), colData(sce_th_mgi), by = "Barcode_uniq", suffixes = c("_illumina","_mgi"))
+dim(compare_cells) # for some reason now I have 6 dups. I checked and they are in both, so must be dups. 
+```
+## Correlation cells
+```{r}
+# TODO improve this plot, and add it in the ZB
+ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
+  geom_point()
+
+lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
+r2 <- summary(lm)$r.squared
+r2
+
+as.data.frame(compare_cells) %>% 
+ggplot(aes(x=detected_illumina, y = detected_mgi)) + 
+ # geom_smooth(method = "lm", colour="grey") +
+  geom_point(shape="o") +
+  ggtitle("Correlation Cells", 
+          subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
+  labs(x = "Illumina", y="MGI",
+       caption = "Number of detected genes for each cell") +
+ geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + #, round(r2,4)))) # I really tried to use the variable, but it does not work with the R2 expression
+  theme_classic()
+
+# Same but marking outliers
+as.data.frame(compare_cells) %>% 
+  mutate(ratio = detected_illumina / detected_mgi) %>% 
+  mutate(outlier = ifelse(ratio < quantile(ratio, 0.025) | ratio > quantile(ratio, 0.975), "TRUE", "FALSE")) %>% 
+ggplot(aes(x=detected_illumina, y = detected_mgi, colour = outlier)) + 
+ # geom_smooth(method = "lm", colour="grey") +
+  geom_point(shape="o") +
+   ggtitle(paste("Cells correlation")) + 
+  labs(x = "Illumina", y="MGI",
+       caption = "Number of detected genes for each cell") +
+ geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + #, round(r2,4)))) # I really tried to use the variable, but it does not work with the R2 expression
+  theme_classic()
+
+ 
+ #save to file the outliers
+ outlier_barcodes <- as.data.frame(compare_cells) %>% 
+   mutate(ratio = detected_illumina / detected_mgi) %>% 
+  mutate(outlier = ifelse(ratio < quantile(ratio, 0.025) | ratio > quantile(ratio, 0.975), "TRUE", "FALSE")) %>% 
+   pull(Barcode_uniq)
+ saveRDS(outlier_barcodes, here("outs/correlations/outlier_cells.RDS"))
+```
+
+The outlier cells are saved
+
+## number of genes
+```{r}
+# subset to only have genes expressed
+sce_th_illumina <- sce_th_illumina[rowSums(assay(sce_th_illumina))>0,]
+sce_th_mgi <- sce_th_mgi[rowSums(assay(sce_th_mgi))>0,]
+
+dim(sce_th_illumina)[1]
+dim(sce_th_mgi)[1]
+
+compare_genes <- merge(rowData(sce_th_illumina), rowData(sce_th_mgi), by="ID", suffixes = c("_illumina", "_mgi"))
+```
+
+
+```{r}
+venn.diagram(list(rownames(sce_th_mgi), rownames(sce_th_illumina)), 
+             
+             #aes
+             col = colour_blue_yellow,
+             fill = c(alpha(colour_blue_yellow[1]), alpha(colour_blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "vennZBilluminavsMGI_genes.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Genes",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+## correlation genes
+```{r}
+lm <- lm(compare_genes$mean_illumina ~ compare_genes$mean_mgi)
+r2 <- summary(lm)$r.squared
+r2
+
+ggplot(as.data.frame(compare_genes), aes(x=mean_illumina, y=mean_mgi)) +
+  geom_point(shape="o") +
+  ggtitle("Gene correlation") +
+    labs(x= "Illumina", y= "MGI",
+       caption = "Average expression of each gene across all cells") +
+ # geom_smooth(method = "lm", colour = "black")
+  geom_text(x = 100, y = 250, label = expression(paste("R"^2, "= 0.9958"))) +#, round(r2,4)))) # I really tried to use the 
+  theme_classic()
+  
+  
+# same colouring outliers
+as.data.frame(compare_genes) %>% 
+  mutate(mean_ratio = mean_illumina / mean_mgi) %>% 
+  mutate(outlier = ifelse(mean_ratio < quantile(mean_ratio, 0.025) | mean_ratio > quantile(mean_ratio, 0.975), "TRUE", "FALSE")) %>% 
+  arrange(outlier) %>% # there are all condensed in low expression area, so we need to put them on top so we see them. 
+ggplot(aes(x=mean_illumina, y=mean_mgi, colour = outlier )) +
+  geom_point(shape="o") +
+  ggtitle("Gene correlation", 
+          subtitle = paste("Num Genes =", dim(compare_genes)[1])) +
+    labs(x= "Illumina", y= "MGI",
+       caption = "Average expression of each gene across all cells") +
+ # geom_smooth(method = "lm", colour = "black")
+ # geom_text(x = 100, y = 250, label = expression(paste("R"^2, "= 0.9958"))) +#, round(r2,4)))) # I really tried to use the 
+  theme_classic()
+```
+
+Same plot without the genes with highest expression
+```{r}
+as.data.frame(compare_genes) %>% 
+  filter(mean_mgi != max(mean_mgi))  %>% 
+ggplot(aes(x=mean_illumina, y=mean_mgi )) +
+   geom_point(shape="o") +
+  ggtitle("Gene correlation", 
+          subtitle = paste("Num Genes =", dim(compare_genes)[1]-1)) +
+    labs(x= "Illumina", y= "MGI",
+       caption = "Average expression of each gene across all cells - With no MALAT1") +
+  geom_text(x = 30, y = 75, label = expression(paste("R"^2, "= 0.9958"))) +
+    theme_classic()
+
+```
+
+
+The outliers are very low expression genes
+```{r}
+as.data.frame(compare_genes) %>% 
+  mutate(mean_ratio = mean_illumina / mean_mgi) %>% 
+  mutate(outlier = ifelse(mean_ratio < quantile(mean_ratio, 0.025) | mean_ratio > quantile(mean_ratio, 0.975), "outlier", ".")) %>% 
+  filter(outlier == "outlier")  %>% 
+ggplot(aes(x=mean_illumina, y=mean_mgi )) +
+  geom_point() +
+  ggtitle("Outlier genes")
+```
+

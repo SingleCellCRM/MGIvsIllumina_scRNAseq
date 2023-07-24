@@ -1,0 +1,158 @@
+---
+title: "MGI vs Illumina"
+author: "Nadine Bestard"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(here)
+library(dplyr)
+library(ggplot2)
+```
+
+## FastQC
+
+```{r}
+fastqc <- read.delim(here("outs/fastqc/downsampled/multiqc_data/multiqc_fastqc.txt"))
+fastqc_general <- read.delim(here("outs/fastqc/downsampled/multiqc_data/multiqc_general_stats.txt"))
+
+fastqc_r2 <- fastqc_general %>% 
+  mutate(Sequencing = ifelse(grepl("MGI", fastqc$Sample), "MGI", "Illumina")) %>% 
+  #remove the R1
+  filter(FastQC_mqc.generalstats.fastqc.avg_sequence_length == 90) %>%
+  #remove the RT
+  filter(FastQC_mqc.generalstats.fastqc.total_sequences > 150000000 & 
+           Sample != ("MGI_RT1_S1_L001_R2_001") &
+           Sample != ("MGI_RT2_S1_L001_R2_001")) # %>% 
+ 
+  fastqc_r2 %>%  group_by(Sequencing) %>%
+  summarise(dups=mean(FastQC_mqc.generalstats.fastqc.percent_duplicates)) %>%
+  # plot the duplicated seqs
+  ggplot(aes(x=Sequencing, y=dups)) + geom_bar(stat = "identity")
+
+#total_deduplicated_percentage
+  MGI_dups <- fastqc_r2 %>% 
+    filter(Sequencing == "MGI") %>%
+    select(FastQC_mqc.generalstats.fastqc.percent_duplicates)
+  
+  illumina_dups <- fastqc_r2 %>% filter(Sequencing == "Illumina") %>% select(FastQC_mqc.generalstats.fastqc.percent_duplicates)
+  
+  t.test(MGI_dups, illumina_dups, paried = TRUE )
+  
+  # only moused
+  
+  #total_deduplicated_percentage
+  MGI_dups <- fastqc_r2 %>% 
+    filter(Sequencing == "MGI") %>% 
+    select(FastQC_mqc.generalstats.fastqc.percent_duplicates)
+  
+  illumina_dups <- fastqc_r2 %>% filter(Sequencing == "Illumina") %>%  select(FastQC_mqc.generalstats.fastqc.percent_duplicates)
+  
+  t.test(MGI_dups, illumina_dups, paried = TRUE )
+  
+```
+```{r}
+PairedData::plot(PairedData::paired(MGI_dups, illumina_dups), type = "profile", ylim= c(0,100), cols = c("darkblue", "darkorange")) # to do, replot with ggpubr
+ggpubr::ggpaired(fastqc_r2, x = "Sequencing", y = "FastQC_mqc.generalstats.fastqc.percent_duplicates" , fill = "Sequencing", palette = "jco") #+ ylim(c(0,100))
+```
+With RT not possible paired data, cause illumina is in 2 lanes. ( I could have merged them, but I haven't)
+
+```{r, eval=FALSE}
+fastqc_r2_rt <- fastqc_general %>% 
+  mutate(Sequencing = ifelse(grepl("MGI", fastqc$Sample), "MGI", "Illumina")) %>% 
+  #remove the R1
+  filter(FastQC_mqc.generalstats.fastqc.avg_sequence_length == 90) %>%
+  #remove the RT
+  filter(FastQC_mqc.generalstats.fastqc.total_sequences < 290000000 | 
+           Sample == ("MGI_RT1_S1_L001_R2_001") |
+           Sample == ("MGI_RT2_S1_L001_R2_001")) # %>% 
+ 
+  fastqc_r2 %>%  group_by(Sequencing) %>%
+  summarise(dups=mean(FastQC_mqc.generalstats.fastqc.percent_duplicates)) %>%
+  # plot the duplicated seqs
+  ggplot(aes(x=Sequencing, y=dups)) + geom_bar(stat = "identity")
+
+fastqc_r2_rt
+  
+  
+```
+
+![sequencequalityscores][../outs/fastqcplots/fastqc_per_sequence_quality_scores_plot_orange_blue]
+
+
+## Cell Ranger
+
+- plot umis, mapped, cells, avg reads/cells 
+```{r}
+# all interesting info was already in the other file
+#cellranger_general <- read.delim(here("outs/cellranger/downsampled/multiqc_data/multiqc_general_stats.txt"))
+#colnames(cellranger_general) <- stringr::str_replace(colnames(cellranger_general),"Cell.Ranger.Count_mqc.generalstats.cell_ranger_count.Count_", "")
+
+cellranger <- read.delim(here("outs/cellranger/downsampled/multiqc_data_all/multiqc_cellranger_count.txt"))
+
+#cellranger <- merge(cellranger_general, cellranger, by= "Sample")
+
+# illumina reads TH7 and TH8 are swapped
+
+cellranger[c(18,19),2:21] <- cellranger[c(19,18),2:21]
+
+
+cellranger_general <- cellranger %>% select(Sample, estimated.cells, reads.in.cells, avg.reads.cell, saturation, genes.detected) %>% 
+  mutate(Sequencing = ifelse(grepl("MGI", cellranger$Sample), "MGI", "Illumina"))
+
+cellranger_seq <- cellranger %>% select(Sample, 
+reads.mapped,
+confident.intergenic, confident.intronic, confident.exonic, reads.antisense) %>% 
+  mutate(Sequencing = ifelse(grepl("MGI", cellranger$Sample), "MGI", "Illumina"))
+
+
+for(variable in colnames(cellranger_seq)){
+  plot(ggpubr::ggpaired(cellranger_seq, x = "Sequencing", y = variable , fill = "Sequencing", palette = "jco")  + ylab(variable))
+}
+
+for(variable in colnames(cellranger_general)){
+  plot(ggpubr::ggpaired(cellranger_general, x = "Sequencing", y = variable , fill = "Sequencing", palette = "jco")  + ylab(variable))
+}
+
+```
+```{r}
+#t-test
+for(variable in colnames(cellranger_general)){
+  if(variable != "Sample" & variable != "Sequencing" ){
+ MGI <- cellranger_general %>% 
+    filter(Sequencing == "MGI") %>% 
+    select(variable)
+  
+  illumina <- cellranger_general %>% filter(Sequencing == "Illumina") %>%  select(variable)
+  
+  print(variable)
+ print( t.test(MGI, illumina
+         , paried = TRUE ))
+  }
+}
+
+for(variable in colnames(cellranger_seq)){
+  if(variable != "Sample" & variable != "Sequencing" ){
+ MGI <- cellranger_seq %>% 
+    filter(Sequencing == "MGI") %>% 
+    select(variable)
+  
+  illumina <- cellranger_seq %>% filter(Sequencing == "Illumina") %>%  select(variable)
+  
+  print(variable)
+ print( t.test(MGI, illumina
+         , paried = TRUE ))
+  }
+}
+```
+TO do:
+- global correlation genes
+- individual genes picked ( the ones for annotation)  
+    - feature plots
+    - umap plots with neurons etc marked. How many cells per cluster
+- top 20% expression correlation, and bottom 20% correlation (maybe)
+
