@@ -191,6 +191,44 @@ Ahaa! The samples swap in illumina matters. The barcodes do have numbers appende
 # Annotation
 ```{r}
 library(SingleR)
+reference <- readRDS(here("data/singlecell-workflow/sce_th_annotated.RDS"))
+annotation <- SingleR(test = sce, ref = reference, labels = reference$celltype, de.method = "wilcox")
+sce$labels <- annotation$labels
+sce$labels_pruned <- annotation$pruned.labels
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels") + facet_wrap(~Sequencing) 
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing)
+```
 
+
+```{r}
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "subsets_Mt_percent") + facet_wrap(~Sequencing) 
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "sum") + facet_wrap(~Sequencing) 
+```
+# If I was stricter in the QC?
+
+There is a big blurb of low quality cells that is labeled as NA. In the real analysis we delted more cells than just the automatic isOutliers thersholds. 
+
+```{r}
+keep <- sce$sum > 3000 & sce$detected > 750 & sce$subsets_Mt_percent < 6
+sce_strict <- sce[, keep ]
+
+plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing)
+
+plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "subsets_Mt_percent") + facet_wrap(~Sequencing)
+plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "sum") + facet_wrap(~Sequencing)
+```
+```{r}
+sce_strict$Stricter <- sce_strict$sum > 5000 & sce_strict$subsets_Mt_percent < 5
+plotReducedDim(sce_strict, dimred="TSNE", colour_by = "Stricter") 
+(table <- table(sce_strict$labels_pruned, sce_strict$Stricter, useNA= "ifany"))
+table[,1]/(table[,2]+ table[,1])*100
+```
+
+There is not a significant difference beteween the celltypes assignations. 
+
+```{r}
+(table <- table(sce_strict$labels_pruned, sce_strict$Sequencing, useNA="ifany"))
+table[,1]/(table[,2]+ table[,1])*100
+chisq.test(table)
 ```
 
