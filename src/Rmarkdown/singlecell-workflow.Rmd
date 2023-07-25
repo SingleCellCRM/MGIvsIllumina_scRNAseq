@@ -1,0 +1,196 @@
+---
+title: "Thalamus David m. data MGI vs Illumina"
+author: "Nadine Bestard"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(DropletUtils)
+library(here)
+library(ggplot2)
+```
+```{r}
+# colours
+blue_yellow <- ggsci::pal_jco("default")(2)
+grey_red <- ggsci::pal_jco("default")(4)[3:4]
+# scales::show_col(ggsci::pal_jco("default")(4))
+```
+
+
+# Load datasets
+```{r}
+#thalamus
+sample_names_th_illumina <-dir(here("outs/cellranger/downsampled"), pattern = "^[T]") # extract TH and ZB
+sample_names_th_mgi <-dir(here("outs/cellranger/downsampled"), pattern = "^MGI_[T]") # extract TH and ZB
+#sampels
+samples_th_illumina <- here(paste0("outs/cellranger/downsampled/", sample_names_th_illumina, "/outs/filtered_feature_bc_matrix/"))
+samples_th_mgi <- here(paste0("outs/cellranger/downsampled/", sample_names_th_mgi, "/outs/filtered_feature_bc_matrix/"))
+
+#into sce
+sce_th_mgi <- read10xCounts(samples_th_mgi, sample.names = sample_names_th_mgi, col.names = TRUE)
+sce_th_illumina <- read10xCounts(samples_th_illumina, sample.names = sample_names_th_illumina, col.names = TRUE)
+
+# Mark the cells
+cells_only_in_illumina <- readRDS(here("outs/correlations/cells_only_in_illumina.RDS"))
+sce_th_illumina$Only_in_one_sequencing_tecnology <- ifelse(colnames(sce_th_illumina) %in% cells_only_in_illumina, "Only_Illumina", "both")
+sce_th_illumina$Barcode_unique <- paste0(colnames(sce_th_illumina), "_Illumina")
+sce_th_illumina$Sequencing <- "Illumina"
+
+cells_only_in_mgi <- readRDS(here("outs/correlations/cells_only_in_mgi.RDS"))
+sce_th_mgi$Only_in_one_sequencing_tecnology <- ifelse(colnames(sce_th_mgi) %in% cells_only_in_mgi, "Only_MGI", "both")
+sce_th_mgi$Barcode_unique <- paste0(colnames(sce_th_mgi), "_MGI")
+sce_th_mgi$Sequencing <- "MGI"
+
+# Merge both
+sce <- cbind(sce_th_illumina, sce_th_mgi)
+```
+
+
+# Quality control
+```{r}
+library(scater)
+rownames(sce) <- uniquifyFeatureNames(rowData(sce)$ID, 
+    rowData(sce)$Symbol)
+is_mito <- grepl("^mt-", rownames(sce))
+sce <- addPerCellQCMetrics(sce, subsets=list(Mt=is_mito))
+qc <- perCellQCFilters(sce, sub.fields = "subsets_Mt_percent")
+colData(sce) <- cbind(colData(sce), qc)
+```
+
+
+```{r}
+plotColData(sce, y = "sum", colour_by = "discard", x = "Only_in_one_sequencing_tecnology") +
+  scale_colour_manual(values = grey_red)
+```
+
+The cells only detected with one technology are less?? discarded than the ones that were kept with both. This is the opposite of what my hypothesis was. The cells excluded at the cell calling step are low quality, I expected that these same cells that still passed for one of the sequencing methods would be discarded now, as I am being more stringent with the discarding paramtres.
+
+```{r}
+discardnum <- table(sce$Only_in_one_sequencing_tecnology, sce$discard)
+colnames(discardnum) <- c("Keep", "Discard")
+discardnum
+# calculate proportion of discarded cells in each group
+discardnum[,2]/(discardnum[,1]+discardnum[,2])*100 # the expected would be 17.34 for all.
+#chisq tests contingency table tests, is the proportion between keep and discarded different than the expected if the groups had no effect on these proportions?
+# The numbers are so big that anything would be significant, so I divided by 100, that is the order of magnitude we are interested in.
+chisq.test(discardnum/100)
+# this is the expected values if all were the same
+chisq.test(discardnum)$expected
+```
+
+For the cells detected in both technologies, are we deleting more MGI or Illumina cells?
+Maybe slightly more Illumina ones, but not significant
+```{r}
+plotColData(sce, y = "sum", colour_by = "discard", x = "Sequencing") +
+  scale_colour_manual(values = grey_red) + ylab("UMI counts")
+plotColData(sce, y = "detected", colour_by = "discard", x = "Sequencing")+
+  scale_colour_manual(values = grey_red) + ylab("Detected genes")
+plotColData(sce, y = "subsets_Mt_percent", colour_by = "discard", x = "Sequencing")+
+  scale_colour_manual(values = grey_red) + ylab("Mitochondrial percentage")
+```
+
+```{r}
+discardnum <- table(sce$Sequencing, sce$discard)
+colnames(discardnum) <- c("Keep", "Discard")
+discardnum
+# calculate proportion of discarded cells in each group
+discardnum[,2]/(discardnum[,1]+discardnum[,2])*100 # the expected would be 17.34 for all.
+#chisq tests contingency table tests, is the proportion between keep and discarded different than the expected if the groups had no effect on these proportions?
+chisq.test(discardnum/100)#, simulate.p.value = TRUE)
+# this is the expected values if all proportions were the same
+chisq.test(discardnum)$expected
+```
+
+## Filter red-blood cells
+This dataset has a few redbood cells, with high umi and low detected genes. 
+We delete them using the ratio between these too parametres. 
+
+```{r}
+sce$ratio_detected_sum <- sce$detected / sce$sum
+sce$outlier_ratio <- isOutlier(sce$ratio_detected_sum, type = "low")
+plotColData(sce, x = "sum", y = "detected", colour_by = "outlier_ratio")
+table(sce$outlier_ratio, sce$Sequencing)
+```
+
+## Perform the filtering
+```{r}
+# perform filtering
+sce <- sce[,!sce$discard & sce$outlier_ratio == FALSE]
+# also filter genes
+# empty genes
+discard <- rowSums(assay(sce)) < 1 
+sce <- sce[!discard, ]
+```
+
+# Normalisation, Variance estimation and Dim reduction
+
+```{r}
+library(scran)
+if (!(file.exists(here("outs", "singlecell-workflow",  "sce_dim.RDS")))) {
+#Normalisation
+  # For reproducibility
+  set.seed(100)
+  # Quick clustering to pool samples together and deal with 0 counts
+  quick_clusters <- quickCluster(sce)
+  # Calculate size factors
+  sce <- computeSumFactors(sce, cluster = quick_clusters, min.mean = 0.1)
+  # Check that there are not negative size factors
+  summary(sizeFactors(sce))
+  # Apply size factors and log transform them
+  sce <- logNormCounts(sce)
+
+#Gene Variance
+  gene_var_df <- modelGeneVar(sce)
+  hvgs <- getTopHVGs(gene_var_df, prop=0.15)
+  # save them in the object
+  rowSubset(sce) <- hvgs
+  
+# PCA
+  set.seed(1000)
+  sce <- runPCA(sce)
+  reducedDim(sce, "PCA") <- reducedDim(sce, "PCA")[,1:25]
+# TSNE
+  set.seed(1000)
+  sce <- runTSNE(sce, dimred="PCA")
+
+# Save
+  saveRDS(sce,here("outs", "singlecell-workflow",  "sce_dim.RDS") )
+}else{
+  sce <- readRDS(here("outs", "singlecell-workflow",  "sce_dim.RDS"))
+}
+#I want to get both tanglled. Not MGI on top.
+sce$random_order <- sample(ncol(sce))
+# I first thought the colour_by field decided the order, so I extracted this into geom point
+# maybe not. 
+ # plotReducedDim(sce[,sce$random_order], dimred="TSNE", other_fields=c("Sequencing", "random_order")) + geom_point(aes(colour = Sequencing))
+# With resampling sce in random order is enough
+    plotReducedDim(sce[,sce$random_order], dimred="TSNE", colour_by = "Sequencing") + 
+    scale_colour_manual(values=rev(blue_yellow))
+  plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "Sequencing") + facet_wrap(~Sequencing) + 
+    scale_colour_manual(values=rev(blue_yellow))
+  
+  # The cells that are different between both tecnologies
+      plotReducedDim(sce[,sce$random_order], dimred="TSNE", colour_by = "Only_in_one_sequencing_tecnology")# + 
+    scale_colour_manual(values=rev(blue_yellow))
+ 
+```
+Ohh! Thhis is weird. 
+```{r}
+table(sce$Only_in_one_sequencing_tecnology, sce$Sample)
+```
+
+Ahaa! The samples swap in illumina matters. The barcodes do have numbers appended to them. It won't be the same, so actually this explains the "big" non-overlap of cells between technologies. I'll correct this
+
+
+# Annotation
+```{r}
+library(SingleR)
+
+```
+
