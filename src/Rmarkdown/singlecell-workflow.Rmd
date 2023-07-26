@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # Libraries
-```{r}
+```{r message=FALSE, warning=FALSE}
 library(DropletUtils)
 library(here)
 library(ggplot2)
@@ -19,6 +19,7 @@ library(ggplot2)
 # colours
 blue_yellow <- ggsci::pal_jco("default")(2)
 grey_red <- ggsci::pal_jco("default")(4)[3:4]
+kelly_col <- unname(pals::kelly()[-c(1,2,3,6)])
 # scales::show_col(ggsci::pal_jco("default")(4))
 ```
 
@@ -52,7 +53,10 @@ sce <- cbind(sce_th_illumina, sce_th_mgi)
 ```
 
 
-# Quality control
+# Quality control with linient filters
+
+I use here automatic filters that are quite linient. 
+
 ```{r}
 library(scater)
 rownames(sce) <- uniquifyFeatureNames(rowData(sce)$ID, 
@@ -67,9 +71,12 @@ colData(sce) <- cbind(colData(sce), qc)
 ```{r}
 plotColData(sce, y = "sum", colour_by = "discard", x = "Only_in_one_sequencing_tecnology") +
   scale_colour_manual(values = grey_red)
+plotColData(sce, y = "subsets_Mt_percent", colour_by = "discard", x = "Only_in_one_sequencing_tecnology") +
+  scale_colour_manual(values = grey_red)
 ```
 
-The cells only detected with one technology are less?? discarded than the ones that were kept with both. This is the opposite of what my hypothesis was. The cells excluded at the cell calling step are low quality, I expected that these same cells that still passed for one of the sequencing methods would be discarded now, as I am being more stringent with the discarding paramtres.
+The cells thatwere only detected in one of the sequencing tecnologies are low quality, and are discarded even with a linient filter.
+Significantly more cells are discarded from the "only in illumina" and "only in MGI" group than from the rest of cells. 
 
 ```{r}
 discardnum <- table(sce$Only_in_one_sequencing_tecnology, sce$discard)
@@ -107,9 +114,63 @@ chisq.test(discardnum/100)#, simulate.p.value = TRUE)
 chisq.test(discardnum)$expected
 ```
 
+# Quality control with true filters
+
+I use here the same thresholds applied when analysing the biological data, after multiple rounds of QC
+
+```{r}
+sce$filter <- sce$sum < 3000 | sce$detected < 750 | sce$subsets_Mt_percent > 6
+
+```
+
+
+```{r}
+plotColData(sce, y = "sum", colour_by = "filter", x = "Only_in_one_sequencing_tecnology") +
+  scale_colour_manual(values = grey_red)
+plotColData(sce, y = "subsets_Mt_percent", colour_by = "filter", x = "Only_in_one_sequencing_tecnology") +
+  scale_colour_manual(values = grey_red)
+```
+
+With stricter filters all the cells only detected with one technology are reomoved
+
+```{r}
+filternum <- table(sce$Only_in_one_sequencing_tecnology, sce$filter)
+colnames(filternum) <- c("Keep", "filter")
+filternum
+# calculate proportion of filtered cells in each group
+filternum[,2]/(filternum[,1]+filternum[,2])*100 # the expected would be 17.34 for all.
+#chisq tests contingency table tests, is the proportion between keep and filtered different than the expected if the groups had no effect on these proportions?
+chisq.test(filternum)
+# this is the expected values if all were the same
+chisq.test(filternum)$expected
+```
+
+For the cells detected in both technologies, are we deleting more MGI or Illumina cells?
+Here the difference is even smaller between the two technologies
+```{r}
+plotColData(sce, y = "sum", colour_by = "filter", x = "Sequencing") +
+  scale_colour_manual(values = grey_red) + ylab("UMI counts")
+plotColData(sce, y = "detected", colour_by = "filter", x = "Sequencing")+
+  scale_colour_manual(values = grey_red) + ylab("Detected genes")
+plotColData(sce, y = "subsets_Mt_percent", colour_by = "filter", x = "Sequencing")+
+  scale_colour_manual(values = grey_red) + ylab("Mitochondrial percentage")
+```
+
+```{r}
+filternum <- table(sce$Sequencing, sce$filter)
+colnames(filternum) <- c("Keep", "filter")
+filternum
+# calculate proportion of filtered cells in each group
+filternum[,2]/(filternum[,1]+filternum[,2])*100 # the expected would be 17.34 for all.
+#chisq tests contingency table tests, is the proportion between keep and filtered different than the expected if the groups had no effect on these proportions?
+chisq.test(filternum/100)#, simulate.p.value = TRUE)
+# this is the expected values if all proportions were the same
+chisq.test(filternum)$expected
+```
+
 ## Filter red-blood cells
 This dataset has a few redbood cells, with high umi and low detected genes. 
-We delete them using the ratio between these too parametres. 
+We delete them using the ratio between these too parametres. (With the strict filtering it is not as essential, all these cells are probably gone eitherway)
 
 ```{r}
 sce$ratio_detected_sum <- sce$detected / sce$sum
@@ -119,14 +180,19 @@ table(sce$outlier_ratio, sce$Sequencing)
 ```
 
 ## Perform the filtering
+
+For the filtering I will use the thresholds used for the biological analysis of this data, keeping only 
+the highest quality cells. 
+
 ```{r}
 # perform filtering
-sce <- sce[,!sce$discard & sce$outlier_ratio == FALSE]
+sce <- sce[,!sce$filter & sce$outlier_ratio == FALSE]
 # also filter genes
 # empty genes
 discard <- rowSums(assay(sce)) < 1 
 sce <- sce[!discard, ]
 ```
+
 
 # Normalisation, Variance estimation and Dim reduction
 
@@ -175,60 +241,51 @@ sce$random_order <- sample(ncol(sce))
   plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "Sequencing") + facet_wrap(~Sequencing) + 
     scale_colour_manual(values=rev(blue_yellow))
   
-  # The cells that are different between both tecnologies
-      plotReducedDim(sce[,sce$random_order], dimred="TSNE", colour_by = "Only_in_one_sequencing_tecnology")# + 
-    scale_colour_manual(values=rev(blue_yellow))
+
  
 ```
-Ohh! Thhis is weird. 
-```{r}
-table(sce$Only_in_one_sequencing_tecnology, sce$Sample)
-```
-
-Ahaa! The samples swap in illumina matters. The barcodes do have numbers appended to them. It won't be the same, so actually this explains the "big" non-overlap of cells between technologies. I'll correct this
-
 
 # Annotation
 ```{r}
+if(!(file.exists(here("outs", "singlecell-workflow",  "sce_anno.RDS")))) {
 library(SingleR)
 reference <- readRDS(here("data/singlecell-workflow/sce_th_annotated.RDS"))
 annotation <- SingleR(test = sce, ref = reference, labels = reference$celltype, de.method = "wilcox")
 sce$labels <- annotation$labels
 sce$labels_pruned <- annotation$pruned.labels
-plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels") + facet_wrap(~Sequencing) 
-plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing)
+saveRDS(sce, here("outs", "singlecell-workflow",  "sce_anno.RDS"))
+sce <- sce[,(!is.na(sce$labels_pruned))]
+saveRDS(sce, here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
+}else{
+  sce <- readRDS(here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
+}
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing) + scale_colour_manual(values = kelly_col)
 ```
 
 
-```{r}
-plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "subsets_Mt_percent") + facet_wrap(~Sequencing) 
-plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "sum") + facet_wrap(~Sequencing) 
-```
-# If I was stricter in the QC?
-
-There is a big blurb of low quality cells that is labeled as NA. In the real analysis we delted more cells than just the automatic isOutliers thersholds. 
+There is no significant difference between the two Sequencing methods in the annotated number of cells. 
 
 ```{r}
-keep <- sce$sum > 3000 & sce$detected > 750 & sce$subsets_Mt_percent < 6
-sce_strict <- sce[, keep ]
-
-plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing)
-
-plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "subsets_Mt_percent") + facet_wrap(~Sequencing)
-plotReducedDim(sce_strict, dimred="TSNE", other_fields = "Sequencing", colour_by = "sum") + facet_wrap(~Sequencing)
-```
-```{r}
-sce_strict$Stricter <- sce_strict$sum > 5000 & sce_strict$subsets_Mt_percent < 5
-plotReducedDim(sce_strict, dimred="TSNE", colour_by = "Stricter") 
-(table <- table(sce_strict$labels_pruned, sce_strict$Stricter, useNA= "ifany"))
-table[,1]/(table[,2]+ table[,1])*100
+chisq.test(table(sce$Sequencing, sce$labels_pruned))
 ```
 
-There is not a significant difference beteween the celltypes assignations. 
-
 ```{r}
-(table <- table(sce_strict$labels_pruned, sce_strict$Sequencing, useNA="ifany"))
-table[,1]/(table[,2]+ table[,1])*100
-chisq.test(table)
+prop <- as.data.frame(table(sce$Sequencing, sce$labels_pruned))
+colnames(prop) <- c("Sequencing", "CellType", "Proportion")
+ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
+  geom_bar(position = "fill", stat = "identity") + theme_classic()+
+  scale_fill_manual(values = rev(blue_yellow)) +
+theme(axis.text.x = element_text(angle = 45, hjust=1, vjust = 1)) +
+  labs( x = element_blank(), 
+        y = element_text("Proportion"))
+
+ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
+  geom_bar(stat = "identity") + theme_classic()+
+  scale_fill_manual(values = rev(blue_yellow)) +
+theme(axis.text.x = element_text(angle = 45, hjust=1, vjust = 1)) +
+  labs( x = element_blank(), 
+        y = element_text("Cell Numbers"))
+
+table(sce$Sequencing, sce$labels_pruned)
 ```
 
