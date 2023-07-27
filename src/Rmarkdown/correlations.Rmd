@@ -7,11 +7,6 @@ output:
     code_folding: hide
 ---
 
-TO do:
-- global correlation genes
-
-- top 20% expression correlation, and bottom 20% correlation (maybe)
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
@@ -83,7 +78,7 @@ sum(sce_zb_illumina$Barcode_uniq %in% sce_zb_mgi$Barcode_uniq)
 ```
 
 
-```{r}
+```{r, echo=FALSE}
 venn.diagram(list(colnames(sce_zb_mgi), colnames(sce_zb_illumina)), 
              
              #aes
@@ -152,7 +147,7 @@ compare_genes <- merge(rowData(sce_zb_illumina), rowData(sce_zb_mgi), by="ID", s
 ```
 
 
-```{r venngenes}
+```{r venngenesZB, echo=FALSE}
 venn.diagram(list(rownames(sce_zb_mgi), rownames(sce_zb_illumina)), 
              
              #aes
@@ -230,9 +225,8 @@ saveRDS(only_illumina, here(save_path, "cells_only_in_illumina.RDS"))
 
 I saved the cells that are different between the two technologies to track them downstream
 
-
-```{r}
-venn.diagram(list(colnames(sce_zb_mgi), colnames(sce_zb_illumina)), 
+```{r venncellsTH}
+venn.diagram(list(colnames(sce_th_mgi), colnames(sce_th_illumina)), 
              
              #aes
              col = colour_blue_yellow,
@@ -241,7 +235,7 @@ venn.diagram(list(colnames(sce_zb_mgi), colnames(sce_zb_illumina)),
              height = 4800,
              width = 7000,
              resolution = 300,
-             filename = here(save_path, "vennZBilluminavsMGI_cells.png"),
+             filename = here(save_path, "vennTHilluminavsMGI_cells.png"),
              disable.logging=TRUE,
              #text nums
              cex=4,
@@ -271,7 +265,13 @@ dim(compare_cells) # for some reason now I have 6 dups. I checked and they are i
 ```{r}
 # TODO improve this plot, and add it in the ZB
 ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
-  geom_point()
+   geom_point(shape="o") +
+  ggtitle("Correlation Cells", 
+          subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
+  labs(x = "Illumina", y="MGI",
+       caption = "Number of UMI counts for each cell") +
+# geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + 
+  theme_classic()
 
 lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
 r2 <- summary(lm)$r.squared
@@ -325,7 +325,7 @@ compare_genes <- merge(rowData(sce_th_illumina), rowData(sce_th_mgi), by="ID", s
 ```
 
 
-```{r}
+```{r venngenesTH}
 venn.diagram(list(rownames(sce_th_mgi), rownames(sce_th_illumina)), 
              
              #aes
@@ -335,7 +335,7 @@ venn.diagram(list(rownames(sce_th_mgi), rownames(sce_th_illumina)),
              height = 4800,
              width = 7000,
              resolution = 300,
-             filename = here(save_path, "vennZBilluminavsMGI_genes.png"),
+             filename = here(save_path, "vennTHilluminavsMGI_genes.png"),
              disable.logging=TRUE,
              #text nums
              cex=4,
