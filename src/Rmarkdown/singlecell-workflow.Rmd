@@ -19,7 +19,7 @@ library(ggplot2)
 # colours
 blue_yellow <- ggsci::pal_jco("default")(2)
 grey_red <- ggsci::pal_jco("default")(4)[3:4]
-kelly_col <- unname(pals::kelly()[-c(1,2,3,6)])
+kelly_col <- unname(pals::kelly()[-c(1,2,3,6, 15)][c(2, 1 , 3:17)]) #exchange the yellow and purpule (so not all big clusters purpule) and delete similar colours
 # scales::show_col(ggsci::pal_jco("default")(4))
 ```
 
@@ -260,14 +260,14 @@ saveRDS(sce, here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
 }else{
   sce <- readRDS(here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
 }
-plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "labels_pruned") + facet_wrap(~Sequencing) + scale_colour_manual(values = kelly_col)
+plotReducedDim(sce, dimred="TSNE", other_fields = "Sequencing", colour_by = "clusters_named") + facet_wrap(~Sequencing) + scale_colour_manual(values = kelly_col)
 ```
 
 
 There is no significant difference between the two Sequencing methods in the annotated number of cells. 
 
 ```{r}
-chisq.test(table(sce$Sequencing, sce$labels_pruned))
+chisq.test(table(sce$Sequencing, sce$clusters_named))
 ```
 
 ```{r}
