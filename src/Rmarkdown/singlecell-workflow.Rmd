@@ -253,6 +253,7 @@ reference <- readRDS(here("data/singlecell-workflow/sce_th_annotated.RDS"))
 annotation <- SingleR(test = sce, ref = reference, labels = reference$celltype, de.method = "wilcox")
 sce$labels <- annotation$labels
 sce$labels_pruned <- annotation$pruned.labels
+sce$clusters_named <- stringr::str_remove(sce$labels_pruned, "^th")
 saveRDS(sce, here("outs", "singlecell-workflow",  "sce_anno.RDS"))
 sce <- sce[,(!is.na(sce$labels_pruned))]
 saveRDS(sce, here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
