@@ -1,0 +1,49 @@
+---
+title: "Biology"
+author: "Nadine Bestard"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(scater)
+library(here)
+library(ggplot2)
+library(patchwork) # combine plots
+
+# colours
+blue_yellow <- ggsci::pal_jco("default")(2)
+grey_red <- ggsci::pal_jco("default")(4)[3:4]
+kelly_col <- unname(pals::kelly()[-c(1,2,3,6, 15)][c(2, 1 , 3:17)]) #exchange the yellow and purpule (so not all big clusters purpule) and delete similar colours
+```
+
+```{r}
+  sce <- readRDS(here("outs", "singlecell-workflow",  "sce_anno_noNA.RDS"))
+
+# subset to only have the main types in the violin plot
+sce_sub <- sce[, sce$clusters_named %in% c("Astrocytes", "Microglia", "Oligodendrocyte", "Endothelial", "OPC")]
+```
+
+```{r fig.height=15}
+markers <- c("Cldn5","P2ry12","Mbp","Pdgfra")
+plots <- lapply(markers, function(marker){
+plotExpression(sce_sub, features = marker, x = "Sequencing", colour_by = "Sequencing", other_fields = "clusters_named" ) + facet_grid(~clusters_named) + scale_colour_manual(values = rev(blue_yellow)) + labs(y = marker) + 
+    # make fonts bigger and delete usless labels
+    theme(axis.text.x = element_blank(),
+          axis.text.y = element_text(size = 20),
+          axis.title.x = element_blank(),
+          axis.title.y = element_text(size=30)) +
+    # only add the celltypes in the first one.
+    if(marker == "Cldn5"){
+       theme(strip.background = element_blank(), strip.text = element_text(size=30))
+    } else {
+     theme(strip.background = element_blank(), strip.text = element_blank())
+    }
+      
+      })
+wrap_plots(plots, ncol=1)
+```
