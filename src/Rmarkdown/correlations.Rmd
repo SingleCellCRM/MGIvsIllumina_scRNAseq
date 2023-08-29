@@ -264,13 +264,16 @@ dim(compare_cells) # for some reason now I have 6 dups. I checked and they are i
 ## Correlation cells
 ```{r}
 # TODO improve this plot, and add it in the ZB
+lm <- lm(compare_cells$sum_illumina ~ compare_cells$sum_mgi)
+r2_sum <- summary(lm)$r.squared
+r2_sum
 ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
    geom_point(shape="o") +
   ggtitle("Correlation Cells", 
           subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
   labs(x = "Illumina", y="MGI",
        caption = "Number of UMI counts for each cell") +
-# geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + 
+ geom_text(x = 20000, y = 50000, label = expression(paste("R"^2, "= 0.9961"))) + 
   theme_classic()
 
 lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
