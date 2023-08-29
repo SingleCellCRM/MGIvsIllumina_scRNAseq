@@ -226,7 +226,7 @@ saveRDS(only_illumina, here(save_path, "cells_only_in_illumina.RDS"))
 I saved the cells that are different between the two technologies to track them downstream
 
 ```{r venncellsTH}
-venn.diagram(list(colnames(sce_th_mgi), colnames(sce_th_illumina)), 
+venn.diagram(list(colnames(sce_th_illumina), colnames(sce_th_mgi)), 
              
              #aes
              col = colour_blue_yellow,
