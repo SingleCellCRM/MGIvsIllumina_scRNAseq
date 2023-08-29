@@ -2,13 +2,15 @@
 title: "Correlations"
 author: "Nadine Bestard"
 date: "`r Sys.Date()`"
-output:
+output: 
   html_document:
     code_folding: hide
+  
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, 
+                      dev = c('png', 'pdf'), warning = FALSE, message = FALSE)
 ```
 
 ## set-up
@@ -20,7 +22,8 @@ library(VennDiagram)
 library(ggplot2)
 library(dplyr)
 
- save_path <- here("outs/correlations")
+ save_path <- here("outs/correlations/")
+
  dir.create(save_path)
  
  colour_blue_yellow <- ggsci::pal_jco("default")(2)
@@ -114,11 +117,23 @@ dim(compare_cells)
 ```
 
 ## Correlation cells
-```{r}
+```{r corr_zb_sum_cells, fig.path=save_path}
 #plot(compare_cells$sum_illumina, compare_cells$sum_mgi)
+lm <- lm(compare_cells$sum_illumina ~ compare_cells$sum_mgi)
+r2_sum <- summary(lm)$r.squared
+r2_sum
 ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
-  geom_point()
+   geom_point(shape="o") +
+  ggtitle("Correlation Cells", 
+          subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
+  labs(x = "Illumina", y="MGI",
+       caption = "Number of UMI counts for each cell") +
+ geom_text(x = 5e+04, y = 200000, label = expression(paste("R"^2, "= 0.9991"))) + 
+  theme_classic()
+```
 
+
+```{r corr_detected_zb_cells,  fig.path=save_path}
 lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
 r2 <- summary(lm)$r.squared
 ggplot(as.data.frame(compare_cells), aes(x=detected_illumina, y = detected_mgi)) + 
@@ -176,7 +191,7 @@ venn.diagram(list(rownames(sce_zb_mgi), rownames(sce_zb_illumina)),
 ```
 
 ## correlation genes
-```{r}
+```{r  corr_genes_zb_mean, fig.path=save_path}
 lm <- lm(compare_genes$mean_illumina ~ compare_genes$mean_mgi)
 r2 <- summary(lm)$r.squared
 r2
@@ -262,8 +277,7 @@ compare_cells <-  merge(colData(sce_th_illumina), colData(sce_th_mgi), by = "Bar
 dim(compare_cells) # for some reason now I have 6 dups. I checked and they are in both, so must be dups. 
 ```
 ## Correlation cells
-```{r}
-# TODO improve this plot, and add it in the ZB
+```{r th_sum_cell_corr, fig.path=save_path}
 lm <- lm(compare_cells$sum_illumina ~ compare_cells$sum_mgi)
 r2_sum <- summary(lm)$r.squared
 r2_sum
@@ -275,7 +289,10 @@ ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) +
        caption = "Number of UMI counts for each cell") +
  geom_text(x = 20000, y = 50000, label = expression(paste("R"^2, "= 0.9961"))) + 
   theme_classic()
+```
 
+
+```{r th_genes_cell_corr, fig.path=save_path}
 lm <- lm(compare_cells$detected_illumina ~ compare_cells$detected_mgi)
 r2 <- summary(lm)$r.squared
 r2
@@ -290,7 +307,10 @@ ggplot(aes(x=detected_illumina, y = detected_mgi)) +
        caption = "Number of detected genes for each cell") +
  geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + #, round(r2,4)))) # I really tried to use the variable, but it does not work with the R2 expression
   theme_classic()
+```
 
+
+```{r outliers}
 # Same but marking outliers
 as.data.frame(compare_cells) %>% 
   mutate(ratio = detected_illumina / detected_mgi) %>% 
@@ -357,7 +377,7 @@ venn.diagram(list(rownames(sce_th_mgi), rownames(sce_th_illumina)),
 ```
 
 ## correlation genes
-```{r}
+```{r corr_genes_th_mean, fig.path=save_path}
 lm <- lm(compare_genes$mean_illumina ~ compare_genes$mean_mgi)
 r2 <- summary(lm)$r.squared
 r2
@@ -370,8 +390,10 @@ ggplot(as.data.frame(compare_genes), aes(x=mean_illumina, y=mean_mgi)) +
  # geom_smooth(method = "lm", colour = "black")
   geom_text(x = 100, y = 250, label = expression(paste("R"^2, "= 0.9958"))) +#, round(r2,4)))) # I really tried to use the 
   theme_classic()
-  
-  
+```
+
+
+```{r}
 # same colouring outliers
 as.data.frame(compare_genes) %>% 
   mutate(mean_ratio = mean_illumina / mean_mgi) %>% 
@@ -389,7 +411,7 @@ ggplot(aes(x=mean_illumina, y=mean_mgi, colour = outlier )) +
 ```
 
 Same plot without the genes with highest expression
-```{r}
+```{r corr_genes_th_mean_noMALAT, fig.path=save_path}
 as.data.frame(compare_genes) %>% 
   filter(mean_mgi != max(mean_mgi))  %>% 
 ggplot(aes(x=mean_illumina, y=mean_mgi )) +
