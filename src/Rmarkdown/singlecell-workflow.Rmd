@@ -6,7 +6,9 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, 
+                      dev = c('png', 'pdf'), 
+                      warning = FALSE, message = FALSE)
 ```
 
 # Libraries
@@ -14,6 +16,10 @@ knitr::opts_chunk$set(echo = TRUE)
 library(DropletUtils)
 library(here)
 library(ggplot2)
+
+# save figures
+ save_path <- here("outs/singlecell-workflow", "/") # adding trailing / as filenames are pasted directly to path.
+ dir.create(save_path)
 ```
 ```{r}
 # colours
@@ -124,7 +130,7 @@ sce$filter <- sce$sum < 3000 | sce$detected < 750 | sce$subsets_Mt_percent > 6
 ```
 
 
-```{r}
+```{r violin_only_one_seq, fig.path=save_path}
 plotColData(sce, y = "sum", colour_by = "filter", x = "Only_in_one_sequencing_tecnology") +
   scale_colour_manual(values = grey_red)
 plotColData(sce, y = "subsets_Mt_percent", colour_by = "filter", x = "Only_in_one_sequencing_tecnology") +
@@ -147,7 +153,7 @@ chisq.test(filternum)$expected
 
 For the cells detected in both technologies, are we deleting more MGI or Illumina cells?
 Here the difference is even smaller between the two technologies
-```{r}
+```{r violin_sequencing, fig.path=save_path}
 plotColData(sce, y = "sum", colour_by = "filter", x = "Sequencing") +
   scale_colour_manual(values = grey_red) + ylab("UMI counts")
 plotColData(sce, y = "detected", colour_by = "filter", x = "Sequencing")+
@@ -196,7 +202,7 @@ sce <- sce[!discard, ]
 
 # Normalisation, Variance estimation and Dim reduction
 
-```{r}
+```{r dimred, fig.path=save_path}
 library(scran)
 if (!(file.exists(here("outs", "singlecell-workflow",  "sce_dim.RDS")))) {
 #Normalisation
@@ -246,7 +252,7 @@ sce$random_order <- sample(ncol(sce))
 ```
 
 # Annotation
-```{r}
+```{r annotation, fig.path=save_path}
 if(!(file.exists(here("outs", "singlecell-workflow",  "sce_anno.RDS")))) {
 library(SingleR)
 reference <- readRDS(here("data/singlecell-workflow/sce_th_annotated.RDS"))
@@ -270,8 +276,8 @@ There is no significant difference between the two Sequencing methods in the ann
 chisq.test(table(sce$Sequencing, sce$clusters_named))
 ```
 
-```{r}
-prop <- as.data.frame(table(sce$Sequencing, sce$labels_pruned))
+```{r bar_plot_annotation_prop, fig.path=save_path}
+prop <- as.data.frame(table(sce$Sequencing, sce$clusters_named))
 colnames(prop) <- c("Sequencing", "CellType", "Proportion")
 ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
   geom_bar(position = "fill", stat = "identity") + theme_classic()+
@@ -279,7 +285,10 @@ ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
 theme(axis.text.x = element_text(angle = 45, hjust=1, vjust = 1)) +
   labs( x = element_blank(), 
         y = element_text("Proportion"))
+```
 
+
+```{r bar_plot_annotation_nums, fig.path=save_path}
 ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
   geom_bar(stat = "identity") + theme_classic()+
   scale_fill_manual(values = rev(blue_yellow)) +
