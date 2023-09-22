@@ -6,7 +6,9 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, 
+                      dev = c('png', 'pdf'), 
+                      warning = FALSE, message = FALSE)
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -14,7 +16,13 @@ library(scater)
 library(here)
 library(ggplot2)
 library(patchwork) # combine plots
+library(MAST) # for DE
+library(Seurat) # for MAST wrapper
+library(VennDiagram)
 
+# save figures
+ save_path <- here("outs/Biology/", "/") # adding trailing / as filenames are pasted directly to path.
+ dir.create(save_path)
 # colours
 blue_yellow <- ggsci::pal_jco("default")(2)
 grey_red <- ggsci::pal_jco("default")(4)[3:4]
@@ -28,7 +36,7 @@ kelly_col <- unname(pals::kelly()[-c(1,2,3,6, 15)][c(2, 1 , 3:17)]) #exchange th
 sce_sub <- sce[, sce$clusters_named %in% c("Astrocytes", "Microglia", "Oligodendrocyte", "Endothelial", "OPC")]
 ```
 
-```{r fig.height=15}
+```{r markers, fig.height=15, fig.path=save_path }
 markers <- c("Cldn5","P2ry12","Mbp","Pdgfra")
 plots <- lapply(markers, function(marker){
 plotExpression(sce_sub, features = marker, x = "Sequencing", colour_by = "Sequencing", other_fields = "clusters_named" ) + facet_grid(~clusters_named) + scale_colour_manual(values = rev(blue_yellow)) + labs(y = marker) + 
@@ -47,3 +55,112 @@ plotExpression(sce_sub, features = marker, x = "Sequencing", colour_by = "Sequen
       })
 wrap_plots(plots, ncol=1)
 ```
+
+# KO vs WT
+First label the KO
+```{r}
+# the Samples with less than 5 microglia are KO - this is th3, 4, 5 and 7
+table(sce$clusters_named, sce$Sample)["Microglia",]
+
+sce$Genotype <- ifelse(grepl("TH5|TH7|TH3|TH4", sce$Sample), "KO", "WT")
+table(sce$clusters_named, sce$Genotype)["Microglia",]
+```
+
+```{r}
+# We will localise the DE to only 1 celltype. 
+sce_oligo_mgi <- sce[,sce$clusters_named == "Oligodendrocyte" & sce$Sequencing == "MGI"]
+
+sce_oligo_illumina <-  sce[,sce$clusters_named == "Oligodendrocyte" & sce$Sequencing == "Illumina"]
+
+# DE
+srt_oligo_mgi <- as.Seurat(sce_oligo_mgi, data = NULL, counts = "counts")
+Idents(srt_oligo_mgi) <- srt_oligo_mgi$Genotype
+srt_oligo_illumina <- as.Seurat(sce_oligo_illumina, data = NULL, counts = "counts")
+Idents(srt_oligo_illumina) <- srt_oligo_illumina$Genotype
+markers_mgi <- FindMarkers(srt_oligo_mgi, ident.1= "KO", ident.2 = "WT", test.use = "MAST")
+markers_illumina <- FindMarkers(srt_oligo_illumina, ident.1= "KO", ident.2 = "WT", test.use = "MAST")
+
+# how many do not overlap
+sum(!(rownames(markers_mgi)) %in% rownames(markers_illumina))
+sum(!(rownames(markers_illumina)) %in% rownames(markers_mgi))
+
+```
+The genes that do not overlap have little difference in pct and small logFC. 
+If we set stricter thresholds we see how only 3 genes do not overlap.
+```{r}
+
+
+# markers stricter
+markers_strict_mgi <- FindMarkers(srt_oligo_mgi, ident.1= "KO", ident.2 = "WT", test.use = "MAST", logfc.threshold = 0.3 )
+markers_strict_illumina <- FindMarkers(srt_oligo_illumina, ident.1= "KO", ident.2 = "WT", test.use = "MAST", logfc.threshold = 0.3)
+
+sum(!(rownames(markers_strict_illumina)) %in% rownames(markers_strict_mgi))
+markers_strict_illumina[(!(rownames(markers_strict_illumina)) %in% rownames(markers_strict_mgi)),]
+dim(markers_strict_illumina)
+dim(markers_strict_mgi)
+
+
+```
+
+```{r venngenes}
+save_path <- here("outs", "singlecell-workflow")
+venn.diagram(list(rownames(markers_mgi), rownames(markers_illumina)), 
+             
+             #aes
+             col = blue_yellow,
+             fill = c(alpha(blue_yellow[1]), alpha(blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "markers_KO_WT.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Genes DE between KO and WT",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+```{r venngenes_strict}
+save_path <- here("outs", "singlecell-workflow")
+venn.diagram(list(rownames(markers_strict_mgi), rownames(markers_strict_illumina)), 
+             
+             #aes
+             col = blue_yellow,
+             fill = c(alpha(blue_yellow[1]), alpha(blue_yellow[2])),
+             #save
+             height = 4800,
+             width = 7000,
+             resolution = 300,
+             filename = here(save_path, "markers_KO_WT_filtered.png"),
+             disable.logging=TRUE,
+             #text nums
+             cex=4,
+             fontfamily="sans",
+             #text categories
+             category.names = c("MGI" , "Illumina"),
+             cat.cex = 4,
+             cat.fontfamily="sans",
+             cat.default.pos="outer",
+             cat.dist = c(0.055, 0.055),
+             #title
+             main="Genes DE between KO and WT",
+             main.fontfamily = "sans",
+             main.cex=5
+             )
+```
+
+```{r umap_facet_genotype, fig.path=save_path}
+plotReducedDim(sce, dimred="TSNE", other_fields = "Genotype", colour_by = "clusters_named") + facet_wrap(~Genotype) + scale_colour_manual(values = kelly_col)
+```
+
