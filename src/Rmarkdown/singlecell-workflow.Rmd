@@ -61,6 +61,7 @@ sce <- cbind(sce_th_illumina, sce_th_mgi)
 
 # Quality control with linient filters
 
+## Cell qc
 I use here automatic filters that are quite linient. 
 
 ```{r}
@@ -122,6 +123,7 @@ chisq.test(discardnum)$expected
 
 # Quality control with true filters
 
+## Cell QC
 I use here the same thresholds applied when analysing the biological data, after multiple rounds of QC
 
 ```{r}
@@ -185,7 +187,9 @@ plotColData(sce, x = "sum", y = "detected", colour_by = "outlier_ratio")
 table(sce$outlier_ratio, sce$Sequencing)
 ```
 
-## Perform the filtering
+
+
+## Perform the cell filtering
 
 For the filtering I will use the thresholds used for the biological analysis of this data, keeping only 
 the highest quality cells. 
@@ -198,6 +202,31 @@ sce <- sce[,!sce$filter & sce$outlier_ratio == FALSE]
 discard <- rowSums(assay(sce)) < 1 
 sce <- sce[!discard, ]
 ```
+
+## Gene QC
+
+All transcripts that don't have at least 10 cells expressing it is discarded.We perform this 
+QC separate for MGI and Illumina. 
+The cell QC technically is separate too, it is per cell, and cells from MGI and cells from ILLUMINA are different. But the gene counts are calculated summing all cells, so we need to make sure to divide this into two datasets at this stage.
+```{r}
+#MGI
+sce_mgi <- sce[,sce$Sequencing == "MGI"]
+# at least 10 cells should express the gene
+keep_feature_mgi <- rowSums(counts(sce_mgi) > 0) > 10
+#sce_mgi <- sce_mgi[keep_feature_mgi,]
+
+#Illumina
+sce_illumina <- sce[,sce$Sequencing == "Illumina"]
+# at least 10 cells should express the gene
+keep_feature_illumina <- rowSums(counts(sce_illumina) > 0) > 10
+#sce_illumina <- sce_illumina[keep_feature_illumina,]
+
+# What is different between both?
+sum(!rownames(sce_mgi[keep_feature_mgi,]) %in% rownames(sce_illumina[keep_feature_illumina, ]))
+sum(!rownames(sce_illumina[keep_feature_illumina,]) %in% rownames(sce_mgi[keep_feature_mgi, ]))
+# 255 and 297
+```
+
 
 
 # Normalisation, Variance estimation and Dim reduction
