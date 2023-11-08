@@ -36,7 +36,7 @@ kelly_col <- unname(pals::kelly()[-c(1,2,3,6, 15)][c(2, 1 , 3:17)]) #exchange th
 sce_sub <- sce[, sce$clusters_named %in% c("Astrocytes", "Microglia", "Oligodendrocyte", "Endothelial", "OPC")]
 ```
 
-```{r markers, fig.height=15, fig.path=save_path }
+```{r markers,  fig.width=15, fig.path=save_path}
 markers <- c("Cldn5","P2ry12","Mbp","Pdgfra")
 plots <- lapply(markers, function(marker){
 plotExpression(sce_sub, features = marker, x = "Sequencing", colour_by = "Sequencing", other_fields = "clusters_named" ) + facet_grid(~clusters_named) + scale_colour_manual(values = rev(blue_yellow)) + labs(y = marker) + 
@@ -132,7 +132,6 @@ venn.diagram(list(rownames(markers_mgi), rownames(markers_illumina)),
 ```
 
 ```{r venngenes_strict}
-save_path <- here("outs", "singlecell-workflow")
 venn.diagram(list(rownames(markers_strict_mgi), rownames(markers_strict_illumina)), 
              
              #aes
