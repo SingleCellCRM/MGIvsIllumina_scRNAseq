@@ -16,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE,
 library(DropletUtils)
 library(here)
 library(ggplot2)
+library(dplyr) #case_when
 
 # save figures
  save_path <- here("outs/singlecell-workflow", "/") # adding trailing / as filenames are pasted directly to path.
@@ -188,7 +189,6 @@ table(sce$outlier_ratio, sce$Sequencing)
 ```
 
 
-
 ## Perform the cell filtering
 
 For the filtering I will use the thresholds used for the biological analysis of this data, keeping only 
@@ -209,22 +209,33 @@ All transcripts that don't have at least 10 cells expressing it is discarded.We 
 QC separate for MGI and Illumina. 
 The cell QC technically is separate too, it is per cell, and cells from MGI and cells from ILLUMINA are different. But the gene counts are calculated summing all cells, so we need to make sure to divide this into two datasets at this stage.
 ```{r}
-#MGI
+#MGI  
 sce_mgi <- sce[,sce$Sequencing == "MGI"]
-# at least 10 cells should express the gene
-keep_feature_mgi <- rowSums(counts(sce_mgi) > 0) > 10
-#sce_mgi <- sce_mgi[keep_feature_mgi,]
+sce_mgi <- addPerFeatureQCMetrics(sce_mgi)
 
 #Illumina
 sce_illumina <- sce[,sce$Sequencing == "Illumina"]
-# at least 10 cells should express the gene
-keep_feature_illumina <- rowSums(counts(sce_illumina) > 0) > 10
-#sce_illumina <- sce_illumina[keep_feature_illumina,]
+sce_illumina <- addPerFeatureQCMetrics(sce_illumina)
 
-# What is different between both?
-sum(!rownames(sce_mgi[keep_feature_mgi,]) %in% rownames(sce_illumina[keep_feature_illumina, ]))
-sum(!rownames(sce_illumina[keep_feature_illumina,]) %in% rownames(sce_mgi[keep_feature_mgi, ]))
-# 255 and 297
+# Combine the rowdata from both technologies
+#add suffix (only to the stuff added by featureQCmetrics)
+colnames(rowData(sce_mgi))[4:5] <- paste0(colnames(rowData(sce_mgi))[4:5], "_mgi")
+colnames(rowData(sce_illumina))[4:5] <- paste0(colnames(rowData(sce_illumina))[4:5], "_Illumina")
+#mergee and add to original (from the mgi I add the whole thing, but first 3 cols are the same, so not added again for illuina)
+rowData(sce) <-  cbind(rowData(sce_mgi), rowData(sce_illumina)[4:5])
+
+## add some info for plotting
+# average between the two technologies, if I want to plot genes with one single value 
+rowData(sce)$mean <- rowMeans(as.matrix(rowData(sce)[,c("mean_mgi", "mean_Illumina")]))
+rowData(sce)$detected <- rowMeans(as.matrix(rowData(sce)[,c("detected_mgi", "detected_Illumina")]))
+# info what is found where
+rowData(sce)$Only_in_one_sequencing_technology  <-  case_when(
+  rowData(sce)$mean_mgi == 0 ~ "Only_Illumina",
+  rowData(sce)$mean_Illumina == 0 ~ "Only_MGI",
+  .default = "both")
+
+# plotting will need to wait after normalisation
+# head(scuttle::makePerFeatureDF(sce))
 ```
 
 
