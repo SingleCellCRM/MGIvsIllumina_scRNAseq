@@ -218,17 +218,21 @@ The cell QC technically is separate too, it is per cell, and cells from MGI and 
 #MGI  
 sce_mgi <- sce[,sce$Sequencing == "MGI"]
 sce_mgi <- addPerFeatureQCMetrics(sce_mgi)
-
+rowData(sce_mgi)$gene_sum <- rowSums(counts(sce_mgi))
+  
 #Illumina
 sce_illumina <- sce[,sce$Sequencing == "Illumina"]
 sce_illumina <- addPerFeatureQCMetrics(sce_illumina)
+rowData(sce_illumina)$gene_sum <- rowSums(counts(sce_illumina))
 
 # Combine the rowdata from both technologies
 #add suffix (only to the stuff added by featureQCmetrics)
-colnames(rowData(sce_mgi))[4:5] <- paste0(colnames(rowData(sce_mgi))[4:5], "_mgi")
-colnames(rowData(sce_illumina))[4:5] <- paste0(colnames(rowData(sce_illumina))[4:5], "_Illumina")
+colnames(rowData(sce_mgi))[4:6] <- paste0(colnames(rowData(sce_mgi))[4:6], "_mgi")
+colnames(rowData(sce_illumina))[4:6] <- paste0(colnames(rowData(sce_illumina))[4:6], "_Illumina")
+
+
 #mergee and add to original (from the mgi I add the whole thing, but first 3 cols are the same, so not added again for illuina)
-rowData(sce) <-  cbind(rowData(sce_mgi), rowData(sce_illumina)[4:5])
+rowData(sce) <-  cbind(rowData(sce_mgi), rowData(sce_illumina)[4:6])
 
 ## add some info for plotting
 # average between the two technologies, if I want to plot genes with one single value 
@@ -239,9 +243,52 @@ rowData(sce)$Only_in_one_sequencing_technology  <-  case_when(
   rowData(sce)$mean_mgi == 0 ~ "Only_Illumina",
   rowData(sce)$mean_Illumina == 0 ~ "Only_MGI",
   .default = "both")
+# the counts is tricky, I don't want to inflate them by summing them when it's both
+# nor reduce them by averaging when it's only in one.
+rowData(sce)$gene_sum  <-  case_when(
+  rowData(sce)$Only_in_one_sequencing_technology == "Only_Illumina" ~ rowData(sce)$gene_sum_Illumina,
+  rowData(sce)$Only_in_one_sequencing_technology == "Only_MGI" ~ rowData(sce)$gene_sum_mgi,
+  .default = rowMeans(as.matrix(rowData(sce)[,c("gene_sum_mgi", "gene_sum_Illumina")])))
+  
+# Discard if lower than 10.
+rowData(sce)$discard <- ifelse(rowData(sce)$gene_sum > 10 , FALSE, TRUE)
 
-# plotting will need to wait after normalisation
+# this need to wait after normalisation
 # head(scuttle::makePerFeatureDF(sce))
+
+# Plot different variables
+ggplot(as.data.frame(rowData(sce)), aes(x=Only_in_one_sequencing_technology, y=mean)) +
+  geom_violin() +
+  geom_jitter(size = 0.1) +
+  scale_y_log10(limits = c(min(rowData(sce)$mean), 100))#limits = c(0, 100)) # I delete the MALAT1
+
+ggplot(as.data.frame(rowData(sce)), aes(x=Only_in_one_sequencing_technology, y=detected)) +
+  geom_violin() +
+    geom_jitter(size = 0.1) +
+  scale_y_log10() +
+  ylab("% cells where the gene is detected")
+
+ggplot(as.data.frame(rowData(sce)), aes(x=Only_in_one_sequencing_technology, y=gene_sum)) +
+ geom_violin(colour = "darkgrey", fill="white") +
+  ggbeeswarm::geom_quasirandom(width=0.4, groupOnX=TRUE, bandwidth=1, alpha=0.4, aes(colour = discard, y=gene_sum)) +
+ #   geom_jitter(size = 0.1) +#, aes(colour = discard, y=gene_sum)) +
+ # scale_y_log10() +
+  scale_y_continuous(limits=c(0,3000000)) +
+  scale_colour_manual(values = grey_red) +
+  ylab("number cells where the gene is detected") +
+  theme_classic()
+```
+
+
+```{r violin_only_one_seq_genes, fig.path=save_path}
+ggplot(as.data.frame(rowData(sce)), aes(x=Only_in_one_sequencing_technology, y=gene_sum)) +
+ geom_violin(colour = "darkgrey", fill="white") +
+  ggbeeswarm::geom_quasirandom(width=0.4, groupOnX=TRUE, bandwidth=1, alpha=0.4, aes(colour = discard, y=gene_sum)) +
+ #   geom_jitter(size = 0.1) +#, aes(colour = discard, y=gene_sum)) +
+  scale_y_log10() +
+  scale_colour_manual(values = grey_red) +
+  ylab("number cells") +
+  theme_classic()
 ```
 
 
