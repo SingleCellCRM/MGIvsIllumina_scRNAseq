@@ -59,11 +59,7 @@ sce_th_mgi$Sequencing <- "MGI"
 sce <- cbind(sce_th_illumina, sce_th_mgi)
 ```
 
-
-# Quality control with linient filters
-
-## Cell qc
-I use here automatic filters that are quite linient. 
+## Add QC info
 
 ```{r}
 library(scater)
@@ -71,6 +67,16 @@ rownames(sce) <- uniquifyFeatureNames(rowData(sce)$ID,
     rowData(sce)$Symbol)
 is_mito <- grepl("^mt-", rownames(sce))
 sce <- addPerCellQCMetrics(sce, subsets=list(Mt=is_mito))
+```
+
+
+# Quality control with linient filters
+
+
+## Cell qc
+I use here automatic filters that are quite linient. 
+
+```{r}
 qc <- perCellQCFilters(sce, sub.fields = "subsets_Mt_percent")
 colData(sce) <- cbind(colData(sce), qc)
 ```
