@@ -227,8 +227,12 @@ confident.intergenic, confident.intronic, confident.exonic, reads.antisense) %>%
   mutate(Sequencing = ifelse(grepl("MGI", Sample), "MGI", "Illumina"))
 
 
+
 for(variable in colnames(cellranger_seq)){
-  plot(ggpubr::ggpaired(cellranger_seq, x = "Sequencing", y = variable , fill = "Sequencing", palette = "jco")  + ylab(variable))
+  plot(ggpubr::ggpaired(cellranger_seq, x = "Sequencing", y = variable , fill = "Sequencing", palette = "jco")  
+       + ylab(variable) +
+         ylim(c(0, max(cellranger_seq[[variable]])))
+       )
 }
 
 for(variable in colnames(cellranger_general)){
@@ -267,6 +271,124 @@ for(variable in colnames(cellranger_seq)){
 }
 ```
 
+## save the plots I'll use in the paper
+```{r}
+blue_yellow <- ggsci::pal_jco("default")(2)
+ggplot(cellranger_seq, aes(x = Sequencing, y = reads.mapped , fill = Sequencing, colour = Sequencing))  +
+  geom_point(shape = 21) + #colour = "black", lwd = 0.001
+  ylab("% Reads Mapped") +
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, max(cellranger_seq$reads.mapped)))
+       
+```
+```{r}
+blue_yellow <- ggsci::pal_jco("default")(2)
+ggplot(cellranger_seq, aes(x = Sequencing, y = reads.mapped , fill = Sequencing))  +
+  ylab("% Reads Mapped") +
+  geom_boxplot( lwd = 0.001) + 
+  geom_point(pch=21, stroke=0.01) +
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/mapping_boxplot.pdf"), width = 5, height = 3) 
+       
+```
+```{r}
+ggplot(fastqc_r2, aes(x = Sequencing, y = FastQC_mqc.generalstats.fastqc.percent_duplicates, fill = Sequencing))  +
+  ylab("% Duplicated reads") +
+geom_boxplot( lwd = 0.01, outlier.shape = 21, outlier.fill = blue_yellow[2], outlier.stroke = 0.01) +
+  geom_jitter(pch=21, width=0, stroke = 0.01)+
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0,100)) +
+  theme_classic()
+
+ggsave(here("outs/fastqc/boxplots/duplicatedreads_boxplot.pdf"), width = 5, height = 3) 
+```
+
+```{r}
+ggplot(cellranger_general, aes(x = Sequencing, y = saturation, fill = Sequencing))  +
+  ylab("Saturation") +
+  geom_boxplot( lwd = 0.01, outlier.shape = 21, outlier.fill = blue_yellow[2], outlier.stroke = 0.01) +
+  geom_jitter(pch=21, width=0, stroke = 0.01)+
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/saturation_boxplot.pdf"), width = 5, height = 3) 
+```
+```{r}
+ggplot(cellranger_seq, aes(x = Sequencing, y = confident.intronic, fill = Sequencing))  +
+  ylab("% Reads mapped to intronic region") +
+
+geom_boxplot( lwd = 0.001) + 
+  geom_point(pch=21, stroke=0.01) +
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/intronic_boxplot.pdf"), width = 5, height = 3) 
+```
+```{r}
+ggplot(cellranger_seq, aes(x = Sequencing, y = confident.exonic, fill = Sequencing))  +
+  ylab("% Reads mapped to exonic region") +
+
+geom_boxplot( lwd = 0.001) + 
+  geom_point(pch=21, stroke=0.01) +
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/exonic_boxplot.pdf"), width = 5, height = 3) 
+```
+```{r}
+ggplot(cellranger_seq, aes(x = Sequencing, y = reads.antisense, fill = Sequencing))  +
+  ylab("% Reads mapped to antisense region") +
+
+geom_boxplot( lwd = 0.001) + 
+  geom_point(pch=21, stroke=0.01) +
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/antisense_boxplot.pdf"), width = 5, height = 3) 
+```
+
+```{r}
+ggplot(cellranger_general, aes(x = Sequencing, y = reads.in.cells , fill = Sequencing))  +
+  ylab("% Reads in Cells") +
+  geom_boxplot( lwd = 0.01, outlier.shape = 21, outlier.fill = blue_yellow[2], outlier.stroke = 0.01) +
+  geom_jitter(pch=21, width=0, stroke = 0.01)+
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+         ylim(c(0, 100)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/reads_in_cells_boxplot.pdf"), width = 5, height = 3)
+```
+
+```{r}
+ggplot(cellranger_general, aes(x = Sequencing, y = estimated.cells , fill = Sequencing))  +
+  ylab("Estimated cell number") +
+  geom_boxplot( lwd = 0.01, outlier.shape = 21, outlier.fill = blue_yellow[2], outlier.stroke = 0.01) +
+  geom_jitter(pch=21, width=0, stroke = 0.01)+
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/cells_boxplot.pdf"), width = 5, height = 3)
+```
+
+```{r}
+ggplot(cellranger_general, aes(x = Sequencing, y = genes.detected , fill = Sequencing))  +
+  ylab("Number of Genes") +
+  geom_boxplot( lwd = 0.01, outlier.shape = 21, outlier.fill = blue_yellow[2], outlier.stroke = 0.01) +
+  geom_jitter(pch=21, width=0, stroke = 0.01)+
+  scale_fill_manual(values = rev(blue_yellow)) +
+   scale_colour_manual(values = rev(blue_yellow)) +
+  theme_classic()
+ggsave(here("outs/fastqc/boxplots/genes_boxplot.pdf"), width = 5, height = 3)
+```
 # ZEBRAFISH
 
 ## FastQC
