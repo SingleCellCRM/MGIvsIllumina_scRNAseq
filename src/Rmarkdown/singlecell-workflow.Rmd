@@ -291,6 +291,10 @@ ggplot(as.data.frame(rowData(sce)), aes(x=Only_in_one_sequencing_technology, y=g
   theme_classic()
 ```
 
+```{r}
+# actually filtering
+sce <- sce[!rowData(sce)$discard, ]
+```
 
 
 # Normalisation, Variance estimation and Dim reduction
@@ -378,6 +382,7 @@ ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
 theme(axis.text.x = element_text(angle = 45, hjust=1, vjust = 1)) +
   labs( x = element_blank(), 
         y = element_text("Proportion"))
+ggsave(here("outs/singlecell-workflow/bar_plot_annotation_prop_bigfont.pdf", width = 5, height = 4)
 ```
 
 
@@ -388,7 +393,7 @@ ggplot(data = prop, aes(x = CellType , y = Proportion, fill = Sequencing)) +
 theme(axis.text.x = element_text(angle = 45, hjust=1, vjust = 1)) +
   labs( x = element_blank(), 
         y = element_text("Cell Numbers"))
-
+ggsave(here("outs/singlecell-workflow/bar_plot_annotation_nums_bigfont.pdf"), width = 5, height = 4)
 table(sce$Sequencing, sce$labels_pruned)
 ```
 
