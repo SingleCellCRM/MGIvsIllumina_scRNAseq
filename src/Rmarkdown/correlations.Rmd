@@ -281,14 +281,22 @@ dim(compare_cells) # for some reason now I have 6 dups. I checked and they are i
 lm <- lm(compare_cells$sum_illumina ~ compare_cells$sum_mgi)
 r2_sum <- summary(lm)$r.squared
 r2_sum
+#as.data.frame(compare_cells) %>%  slice(sample(1:67000, 1000)) %>% 
+
 ggplot(as.data.frame(compare_cells), aes(x=sum_illumina, y = sum_mgi)) + 
    geom_point(shape="o") +
-  ggtitle("Correlation Cells", 
-          subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
-  labs(x = "Illumina", y="MGI",
+  ggtitle("Cell Correlation",
+         # subtitle = paste("Num Cells =", dim(compare_cells)[1])
+         ) +
+  labs(x = "Illumina SBS", y="DNBSEQ",
+       subtitle = "Sum of the detected genes for each cell",
        caption = "Number of UMI counts for each cell") +
  geom_text(x = 20000, y = 50000, label = expression(paste("R"^2, "= 0.9961"))) + 
-  theme_classic()
+  theme_classic()+
+  theme(plot.title = element_text(hjust = 0.5),    
+    plot.subtitle = element_text(hjust = 0.5)) +
+  geom_smooth(method = "lm")
+ggsave(here("outs/correlations/corr_cells_th.pdf"), width = 4, height = 4)
 ```
 
 
@@ -303,7 +311,7 @@ ggplot(aes(x=detected_illumina, y = detected_mgi)) +
   geom_point(shape="o") +
   ggtitle("Correlation Cells", 
           subtitle = paste("Num Cells =", dim(compare_cells)[1])) +
-  labs(x = "Illumina", y="MGI",
+  labs(x = "Illumina", y="DNBSEQ",
        caption = "Number of detected genes for each cell") +
  geom_text(x = 2500, y = 7500, label = expression(paste("R"^2, "= 0.9964"))) + #, round(r2,4)))) # I really tried to use the variable, but it does not work with the R2 expression
   theme_classic()
@@ -381,15 +389,21 @@ venn.diagram(list(rownames(sce_th_mgi), rownames(sce_th_illumina)),
 lm <- lm(compare_genes$mean_illumina ~ compare_genes$mean_mgi)
 r2 <- summary(lm)$r.squared
 r2
-
-ggplot(as.data.frame(compare_genes), aes(x=mean_illumina, y=mean_mgi)) +
+ #as.data.frame(compare_genes) %>%  slice(sample(1:27521, 1000)) %>% 
+ggplot(as.data.frame(compare_genes),aes(x=mean_illumina, y=mean_mgi)) +
   geom_point(shape="o") +
   ggtitle("Gene correlation") +
-    labs(x= "Illumina", y= "MGI",
-       caption = "Average expression of each gene across all cells") +
+    labs(x= "Illumina SBS", y= "DNBSEQ",
+         subtitle = "Mean expression across cells for each gene",
+       caption = "Average expression of each gene across all cells") +#, round(r2,4)))) # I really tried to use the 
+  theme_classic()+
+  theme(plot.title = element_text(hjust = 0.5),    
+    plot.subtitle = element_text(hjust = 0.5)) +
+  scale_y_log10(labels = scales::label_number(drop0trailing=TRUE)) + scale_x_log10(labels = scales::label_number(drop0trailing=TRUE)) +
  # geom_smooth(method = "lm", colour = "black")
-  geom_text(x = 100, y = 250, label = expression(paste("R"^2, "= 0.9958"))) +#, round(r2,4)))) # I really tried to use the 
-  theme_classic()
+  geom_text(x = 0, y = -2, label = expression(paste("R"^2, "= 0.9958"))) +
+  geom_smooth(method = "lm")
+ggsave(here("outs/correlations/corr_genes_th_mean_log.pdf"), width = 4, height = 4)
 ```
 
 
