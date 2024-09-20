@@ -102,6 +102,14 @@ dim(markers_strict_mgi)
 
 ```
 
+```{r}
+#the p-value has a greater spread in the common genes. 
+markers_illumina %>% mutate(only= !(rownames(markers_illumina)) %in% rownames(markers_mgi)) %>% group_by(only) %>% summarise(mean(p_val_adj), mean(abs((avg_log2FC))), min(p_val_adj), max(p_val_adj))
+
+markers_mgi %>% mutate(only= !(rownames(markers_mgi)) %in% rownames(markers_illumina)) %>% group_by(only) %>% summarise(mean(p_val_adj), mean(abs(avg_log2FC)))
+
+```
+
 ```{r venngenes}
 save_path <- here("outs", "singlecell-workflow")
 venn.diagram(list(rownames(markers_mgi), rownames(markers_illumina)), 
@@ -161,5 +169,108 @@ venn.diagram(list(rownames(markers_strict_mgi), rownames(markers_strict_illumina
 
 ```{r umap_facet_genotype, fig.path=save_path}
 plotReducedDim(sce, dimred="TSNE", other_fields = "Genotype", colour_by = "clusters_named") + facet_wrap(~Genotype) + scale_colour_manual(values = kelly_col)
+```
+
+```{r}
+markers_mgi$gene <- rownames(markers_mgi)
+markers_illumina$gene <- rownames(markers_illumina)
+
+```
+```{r}
+EnhancedVolcano::EnhancedVolcano(markers_illumina, x = "avg_log2FC", y = "p_val_adj", lab=rownames(markers_illumina), FCcutoff=0.3)
+```
+
+```{r}
+markers_illumina %>% 
+  filter(!(gene %in% rownames(markers_mgi))) %>% 
+           EnhancedVolcano::EnhancedVolcano(markers_illumina, x = "avg_log2FC", y = "p_val_adj", lab="gene", FCcutoff=0.2)
+```
+```{r}
+markers <- full_join(markers_illumina, markers_mgi,suffix = c("_illumina", "_mgi"), by = "gene")
+markers <- markers %>% mutate(only_illumina = !(gene %in% rownames(markers_mgi)),
+                             only_mgi = !(gene %in% rownames(markers_illumina))
+                             )
+markers$sequencing <-  ifelse(markers$only_illumina, "only_illumina", 
+                        ifelse(markers$only_mgi, "only_mgi", "both")) 
+markers <- markers %>% rowwise() %>% mutate(avg_log2FC_avg = mean(c(avg_log2FC_illumina, avg_log2FC_mgi), na.rm = TRUE))
+
+markers %>% ggplot2::ggplot(aes(y = avg_log2FC_illumina)) + geom_boxplot() 
+markers %>% ggplot2::ggplot(aes(y = avg_log2FC_mgi)) + geom_boxplot() 
+markers %>% 
+  filter(!(gene %in% rownames(markers_mgi))) %>%  ggplot2::ggplot(aes(y = avg_log2FC)) + geom_boxplot() 
+markers_mgi %>% 
+  filter(!(gene %in% rownames(markers_illumina))) %>%  ggplot2::ggplot(aes(y = abs(avg_log2FC), x = dummy_variable)) + geom_boxplot() + ylim (c(0,0.5)) +
+  geom_jitter(color = "#0073C2FF"  ) +   scale_fill_manual(values = "#0073C2FF") 
+
+```
+
+```{r}
+markers %>% ggplot2::ggplot(aes(y = abs(avg_log2FC_avg), x = sequencing)) + geom_boxplot(outlier.alpha = 0) + ylim (c(0,2.5))  +
+  geom_jitter(aes(color = sequencing ) ) + scale_color_manual(values = c("darkgreen","#EFC000FF" , "#0073C2FF" ) ) +
+  labs(x = NULL,
+       y = "Abs(log2FC)") +
+  geom_text(label = "C4b", x= "both", y = 2.5) +
+  geom_text(label = "Serpina3n", x= "both", y = 1.8) +
+  theme_classic()
+```
+```{r}
+ggsave(here("outs/Biology/logFC_small.pdf"), width = 5, height = 4 )
+ggsave(here("outs/Biology/logFC.png"), width = 5, height = 4 )
+```
+
+## pvalues
+less visually clear
+```{r}
+markers %>% ggplot2::ggplot(aes(y = (p_val_adj_avg), x = sequencing)) + geom_boxplot(outlier.alpha = 0) + ylim (c(0,2.5))  +
+  geom_jitter(aes(color = sequencing ) ) + scale_color_manual(values = c("darkgreen","#EFC000FF" , "#0073C2FF" ) ) +
+  labs(x = NULL,
+       y = "pval") +
+  scale_y_log10()+
+ # geom_text(label = "C4b", x= "both", y = 2.5) +
+ # geom_text(label = "Serpina3n", x= "both", y = 1.8) +
+  theme_classic()
+```
+
+```{r}
+markers %>% filter(avg_log2FC_avg > 0.3) %>% count(sequencing)
+markers %>% filter(sequencing != "both") %>% .$avg_log2FC_avg  %>% summary(
+```
+
+```{r}
+sce_oligo <- sce[,sce$clusters_named == "Oligodendrocyte"]
+```
+
+
+```{r}
+# Plot Serpin3n
+sce_oligo$random_order <- sample(ncol(sce_oligo))
+plotTSNE(sce_oligo[,sce_oligo$random_order], colour_by = "C4b", other_fields = "Sequencing") + lims(x = c(-15, 10), y = c(-30, 0)) +  #scale_colour_manual(values = c(kelly_col[1:2])) +
+  facet_wrap(~Sequencing)
+ggsave(here("outs/Biology/tsne_c4b.pdf"), width = 4, height = 3)
+ggsave(here("outs/Biology/tsne_c4b.png"), width = 4, height = 3)
+
+plotTSNE(sce_oligo[,sce_oligo$random_order], colour_by = "Serpina3n", other_fields = "Sequencing") + lims(x = c(-15, 10), y = c(-30, 0)) +  #scale_colour_manual(values = c(kelly_col[1:2])) +
+  facet_wrap(~Sequencing)
+ggsave(here("outs/Biology/tsne_Serpina3n.pdf"), width = 4, height = 3)
+ggsave(here("outs/Biology/tsne_Serpina3n.png"), width = 4, height = 3)
+```
+```{r}
+# Plot DE
+sce_oligo_mgi$random_order <- sample(ncol(sce_oligo_mgi))
+plotTSNE(sce_oligo_mgi[,sce_oligo_mgi$random_order], colour_by = "Genotype") + lims(x = c(-15, 10), y = c(-30, 0)) +  scale_colour_manual(values = c(kelly_col[1:2])) +
+  scale_alpha(1)
+ggsave(here("outs/Biology/tsne_ko_wt.pdf"), width = 3, height = 3)
+ggsave(here("outs/Biology/tsne_ko_wt.png"), width = 3, height = 3)
+```
+
+
+# tables
+```{r}
+markers_mgi %>% arrange(p_val_adj) %>% slice(1:11) %>% write.csv(here("outs/Biology/top_pval_mgi.csv"))
+markers_illumina %>% arrange(p_val_adj) %>% slice(1:11) %>% write.csv(here("outs/Biology/top_pval_illumina.csv"))
+
+markers_mgi %>% arrange(desc(abs(avg_log2FC))) %>% slice(1:11) %>% write.csv(here("outs/Biology/top_logFC_mgi.csv"))
+
+markers_illumina %>% arrange(desc(abs(avg_log2FC))) %>% slice(1:11) %>% write.csv(here("outs/Biology/top_logFC_illumina.csv"))
 ```
 
